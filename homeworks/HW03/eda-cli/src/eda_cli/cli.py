@@ -67,8 +67,11 @@ def report(
     sep: str = typer.Option(",", help="Разделитель в CSV."),
     encoding: str = typer.Option("utf-8", help="Кодировка файла."),
     max_hist_columns: int = typer.Option(6, help="Максимум числовых колонок для гистограмм."),
+    
     # === НОВЫЕ ПАРАМЕТРЫ ДОБАВЛЕНЫ ЗДЕСЬ ===
     top_k_categories: int = typer.Option(5, help="Сколько top-значений выводить для категориальных признаков."),
+    quality_score_threshold: float = typer.Option(0.7, help="Порог для оценки качества данных (0-1)."),
+    include_sample_data: bool = typer.Option(True, help="Включать ли примеры данных в отчёт."),
     # === КОНЕЦ НОВЫХ ПАРАМЕТРОВ ===
 ) -> None:
     """
@@ -89,7 +92,6 @@ def report(
     summary_df = flatten_summary_for_print(summary)
     missing_df = missing_table(df)
     corr_df = correlation_matrix(df)
-    # === ИСПОЛЬЗУЕМ НОВЫЙ ПАРАМЕТР top_k_categories ===
     top_cats = top_categories(df, top_k=top_k_categories)
 
     # 2. Качество в целом
@@ -113,15 +115,27 @@ def report(
         # === ДОБАВЛЯЕМ ИНФОРМАЦИЮ О НАСТРОЙКАХ ===
         f.write(f"## Настройки отчёта\n\n")
         f.write(f"- Макс. гистограмм: **{max_hist_columns}**\n")
-        f.write(f"- Top-k категорий: **{top_k_categories}**\n\n")
+        f.write(f"- Top-k категорий: **{top_k_categories}**\n")
+        f.write(f"- Порог качества: **{quality_score_threshold}**\n")
+        f.write(f"- Включить примеры данных: **{include_sample_data}**\n\n")
+
+        # === ДОБАВЛЯЕМ ПРИМЕРЫ ДАННЫХ, ЕСЛИ ВКЛЮЧЕНО ===
+        if include_sample_data:
+            f.write("## Пример данных (первые 5 строк)\n\n")
+            sample_data = df.head().to_markdown(index=False)
+            f.write(f"{sample_data}\n\n")
 
         f.write("## Качество данных (эвристики)\n\n")
         f.write(f"- Оценка качества: **{quality_flags['quality_score']:.2f}**\n")
+        
+        # === ДОБАВЛЯЕМ ПРОВЕРКУ НА ПОРОГ ===
+        if quality_flags['quality_score'] < quality_score_threshold:
+            f.write(f"⚠️ **Внимание**: Оценка качества ниже порога ({quality_score_threshold})!\n\n")
+        
         f.write(f"- Макс. доля пропусков по колонке: **{quality_flags['max_missing_share']:.2%}**\n")
         f.write(f"- Слишком мало строк: **{quality_flags['too_few_rows']}**\n")
         f.write(f"- Слишком много колонок: **{quality_flags['too_many_columns']}**\n")
         f.write(f"- Слишком много пропусков: **{quality_flags['too_many_missing']}**\n")
-        # === ВЫВОДИМ НОВЫЕ ЭВРИСТИКИ ===
         f.write(f"- Есть константные колонки: **{quality_flags['has_constant_columns']}**\n")
         f.write(f"- Есть категории с высокой кардинальностью (> {quality_flags['high_cardinality_threshold']} уникальных): **{quality_flags['has_high_cardinality_categoricals']}**\n\n")
 
@@ -144,22 +158,31 @@ def report(
         if not top_cats:
             f.write("Категориальные/строковые признаки не найдены.\n\n")
         else:
+            f.write(f"Показаны top-{top_k_categories} значений для каждой категориальной колонки.\n")
             f.write("См. файлы в папке `top_categories/`.\n\n")
 
         f.write("## Гистограммы числовых колонок\n\n")
         f.write("См. файлы `hist_*.png`.\n")
 
     # 5. Картинки
-    # === ИСПОЛЬЗУЕМ НОВЫЙ ПАРАМЕТР max_hist_columns ===
     plot_histograms_per_column(df, out_root, max_columns=max_hist_columns)
     plot_missing_matrix(df, out_root / "missing_matrix.png")
     plot_correlation_heatmap(df, out_root / "correlation_heatmap.png")
 
+    # 6. Дополнительный вывод информации о качестве
     typer.echo(f"Отчёт сгенерирован в каталоге: {out_root}")
     typer.echo(f"- Основной markdown: {md_path}")
-    typer.echo(f"- Настройки: max_hist_columns={max_hist_columns}, top_k_categories={top_k_categories}")
+    typer.echo(f"- Настройки отчёта:")
+    typer.echo(f"  • max_hist_columns={max_hist_columns}")
+    typer.echo(f"  • top_k_categories={top_k_categories}")
+    typer.echo(f"  • quality_score_threshold={quality_score_threshold}")
+    typer.echo(f"  • include_sample_data={include_sample_data}")
     typer.echo("- Табличные файлы: summary.csv, missing.csv, correlation.csv, top_categories/*.csv")
     typer.echo("- Графики: hist_*.png, missing_matrix.png, correlation_heatmap.png")
+    
+    # Проверка качества
+    if quality_flags['quality_score'] < quality_score_threshold:
+        typer.echo(f"\n⚠️  Предупреждение: Качество данных ({quality_flags['quality_score']:.2f}) ниже заданного порога ({quality_score_threshold})!")
 
 
 if __name__ == "__main__":

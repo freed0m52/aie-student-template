@@ -106,15 +106,30 @@ def test_quality_flags_no_issues():
     df = pd.DataFrame({
         "id": [1, 2, 3, 4, 5],
         "value": [10.1, 20.2, 30.3, 40.4, 50.5],
-        "category": ["A", "B", "A", "C", "B"]  # низкая кардинальность
+        "category": ["A", "B", "A", "C", "B"]  
     })
     
     summary = summarize_dataset(df)
     missing_df = missing_table(df)
     flags = compute_quality_flags(summary, missing_df)
     
-    # Не должно быть проблем
     assert flags["has_constant_columns"] == False
     assert flags["has_high_cardinality_categoricals"] == False
-    # Score должен быть высоким
+
     assert flags["quality_score"] >= 0.8
+
+def test_quality_flags_with_custom_threshold():
+    """Тест для функции compute_quality_flags с кастомным порогом кардинальности"""
+    df = pd.DataFrame({
+        "id": list(range(60)),
+        "category": [f"cat_{i}" for i in range(60)]  
+    })
+    
+    summary = summarize_dataset(df)
+    missing_df = missing_table(df)
+    
+    flags_default = compute_quality_flags(summary, missing_df, high_cardinality_threshold=50)
+    assert flags_default["has_high_cardinality_categoricals"] == True
+    
+    flags_custom = compute_quality_flags(summary, missing_df, high_cardinality_threshold=100)
+    assert flags_custom["has_high_cardinality_categoricals"] == False
